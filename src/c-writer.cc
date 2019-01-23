@@ -21,6 +21,8 @@
 #include <map>
 #include <set>
 
+#include <iostream>
+
 #include "src/cast.h"
 #include "src/common.h"
 #include "src/ir.h"
@@ -564,11 +566,11 @@ string_view StripLeadingDollar(string_view name) {
 std::string CWriter::DefineImportName(const std::string& name,
                                       string_view module,
                                       string_view mangled_field_name) {
-  std::string mangled = MangleName(module) + mangled_field_name.to_string();
+  std::string mangled = std::string(module) + "_" + mangled_field_name.to_string();
   import_syms_.insert(name);
   global_syms_.insert(mangled);
   global_sym_map_.insert(SymbolMap::value_type(name, mangled));
-  return "(*" + mangled + ")";
+  return mangled;
 }
 
 std::string CWriter::DefineGlobalScopeName(const std::string& name) {
@@ -926,8 +928,11 @@ void CWriter::WriteImports() {
             func.decl,
             DefineImportName(
                 func.name, import->module_name,
+                string_view(import->field_name)));
+                /*
                 MangleFuncName(import->field_name, func.decl.sig.param_types,
                                func.decl.sig.result_types)));
+                               */
         Write(";");
         break;
       }
@@ -935,24 +940,33 @@ void CWriter::WriteImports() {
       case ExternalKind::Global: {
         const Global& global = cast<GlobalImport>(import)->global;
         WriteGlobal(global,
-                    DefineImportName(
+                    Deref(DefineImportName(
                         global.name, import->module_name,
+                        string_view(import->field_name))));
+                        /*
                         MangleGlobalName(import->field_name, global.type)));
+                        */
         Write(";");
         break;
       }
 
       case ExternalKind::Memory: {
         const Memory& memory = cast<MemoryImport>(import)->memory;
-        WriteMemory(DefineImportName(memory.name, import->module_name,
+        WriteMemory(Deref(DefineImportName(memory.name, import->module_name,
+              string_view(import->field_name))));
+              /*
                                      MangleName(import->field_name)));
+                                     */
         break;
       }
 
       case ExternalKind::Table: {
         const Table& table = cast<TableImport>(import)->table;
-        WriteTable(DefineImportName(table.name, import->module_name,
+        WriteTable(Deref(DefineImportName(table.name, import->module_name,
+              string_view(import->field_name))));
+              /*
                                     MangleName(import->field_name)));
+                                    */
         break;
       }
 
@@ -974,8 +988,21 @@ void CWriter::WriteFuncDeclarations() {
   for (const Func* func : module_->funcs) {
     bool is_import = func_index < module_->num_func_imports;
     if (!is_import) {
-      Write("static ");
-      WriteFuncDeclaration(func->decl, DefineGlobalScopeName(func->name));
+      const std::string globalName = DefineGlobalScopeName(func->name);
+
+      bool is_export = false;
+
+      for (const Export* export_ : module_->exports) {
+        if (globalName == export_->name) {
+          is_export = true;
+          break;
+        }
+      }
+
+      if (!is_export)
+        Write("static ");
+
+      WriteFuncDeclaration(func->decl, globalName);
       Write(";", Newline());
     }
     ++func_index;
@@ -1244,7 +1271,7 @@ void CWriter::WriteInit() {
   Write("init_globals();", Newline());
   Write("init_memory();", Newline());
   Write("init_table();", Newline());
-  Write("init_exports();", Newline());
+  //Write("init_exports();", Newline());
   for (Var* var : module_->starts) {
     Write(ExternalRef(module_->GetFunc(*var)->name), "();", Newline());
   }
@@ -1268,8 +1295,22 @@ void CWriter::Write(const Func& func) {
   local_sym_map_.clear();
   stack_var_sym_map_.clear();
 
-  Write("static ", ResultType(func.decl.sig.result_types), " ",
-        GlobalName(func.name), "(");
+  GlobalName globalName(func.name);
+
+  bool is_export = false;
+
+  for (const Export* export_ : module_->exports) {
+    if (GetGlobalName(globalName.name) == export_->name) {
+      is_export = true;
+      break;
+    }
+  }
+
+  if (!is_export)
+    Write("static ");
+
+  Write(ResultType(func.decl.sig.result_types), " ",
+        globalName, "(");
   WriteParamsAndLocals();
   Write("FUNC_PROLOGUE;", Newline());
 
@@ -1444,7 +1485,7 @@ void CWriter::Write(const ExprList& exprs) {
           Write(StackVar(num_params - 1, func.GetResultType(0)), " = ");
         }
 
-        Write(GlobalVar(var), "(");
+        Write(GetGlobalName(var.name()), "(");
         for (Index i = 0; i < num_params; ++i) {
           if (i != 0) {
             Write(", ");
@@ -2254,7 +2295,7 @@ void CWriter::WriteCHeader() {
   Write("#define ", guard, Newline());
   Write(s_header_top);
   WriteImports();
-  WriteExports(WriteExportsKind::Declarations);
+  //WriteExports(WriteExportsKind::Declarations);
   Write(s_header_bottom);
   Write(Newline(), "#endif  /* ", guard, " */", Newline());
 }
@@ -2270,8 +2311,8 @@ void CWriter::WriteCSource() {
   WriteFuncs();
   WriteDataInitializers();
   WriteElemInitializers();
-  WriteExports(WriteExportsKind::Definitions);
-  WriteInitExports();
+  //WriteExports(WriteExportsKind::Definitions);
+  //WriteInitExports();
   WriteInit();
 }
 
