@@ -1199,10 +1199,11 @@ void CWriter::WriteExports(WriteExportsKind kind) {
   }
 
   for (const Export* export_ : module_->exports) {
-    Write("/* export: '", export_->name, "' */", Newline());
+    /*
     if (kind == WriteExportsKind::Declarations) {
       Write("extern ");
     }
+    */
 
     std::string mangled_name;
     std::string internal_name;
@@ -1210,12 +1211,10 @@ void CWriter::WriteExports(WriteExportsKind kind) {
     switch (export_->kind) {
       case ExternalKind::Func: {
         const Func* func = module_->GetFunc(export_->var);
-        mangled_name =
-            ExportName(MangleFuncName(export_->name, func->decl.sig.param_types,
-                                      func->decl.sig.result_types));
+        mangled_name = ExportName(export_->name);
         internal_name = func->name;
         if (kind != WriteExportsKind::Initializers) {
-          WriteFuncDeclaration(func->decl, Deref(mangled_name));
+          WriteFuncDeclaration(func->decl, mangled_name);
           Write(";");
         }
         break;
@@ -2295,7 +2294,7 @@ void CWriter::WriteCHeader() {
   Write("#define ", guard, Newline());
   Write(s_header_top);
   WriteImports();
-  //WriteExports(WriteExportsKind::Declarations);
+  WriteExports(WriteExportsKind::Declarations);
   Write(s_header_bottom);
   Write(Newline(), "#endif  /* ", guard, " */", Newline());
 }
