@@ -1030,29 +1030,29 @@ void CWriter::WriteGlobals() {
     Write(Newline());
 
     for (const Global* global : module_->globals) {
+      const std::string globalName = DefineGlobalScopeName(global->name);
       bool is_import = global_index < module_->num_global_imports;
+      bool is_export = false;
+
+      for (const Export* export_ : module_->exports) {
+        if (globalName == export_->name) {
+          is_export = true;
+          break;
+        }
+      }
+
       if (!is_import) {
-        Write("static ");
-        WriteGlobal(*global, DefineGlobalScopeName(global->name));
+        if (!is_export) {
+          Write("static ");
+        }
+        WriteGlobal(*global, globalName);
+        Write(" = ");
+        WriteInitExpr(global->init_expr);
         Write(";", Newline());
       }
       ++global_index;
     }
   }
-
-  Write(Newline(), "static void init_globals(void) ", OpenBrace());
-  global_index = 0;
-  for (const Global* global : module_->globals) {
-    bool is_import = global_index < module_->num_global_imports;
-    if (!is_import) {
-      assert(!global->init_expr.empty());
-      Write(GlobalName(global->name), " = ");
-      WriteInitExpr(global->init_expr);
-      Write(";", Newline());
-    }
-    ++global_index;
-  }
-  Write(CloseBrace(), Newline());
 }
 
 void CWriter::WriteGlobal(const Global& global, const std::string& name) {
@@ -1199,12 +1199,6 @@ void CWriter::WriteExports(WriteExportsKind kind) {
   }
 
   for (const Export* export_ : module_->exports) {
-    /*
-    if (kind == WriteExportsKind::Declarations) {
-      Write("extern ");
-    }
-    */
-
     std::string mangled_name;
     std::string internal_name;
 
@@ -1223,10 +1217,11 @@ void CWriter::WriteExports(WriteExportsKind kind) {
       case ExternalKind::Global: {
         const Global* global = module_->GetGlobal(export_->var);
         mangled_name =
-            ExportName(MangleGlobalName(export_->name, global->type));
+            ExportName(export_->name);
         internal_name = global->name;
         if (kind != WriteExportsKind::Initializers) {
-          WriteGlobal(*global, Deref(mangled_name));
+          Write("extern ");
+          WriteGlobal(*global, mangled_name);
           Write(";");
         }
         break;
@@ -1234,7 +1229,7 @@ void CWriter::WriteExports(WriteExportsKind kind) {
 
       case ExternalKind::Memory: {
         const Memory* memory = module_->GetMemory(export_->var);
-        mangled_name = ExportName(MangleName(export_->name));
+        mangled_name = ExportName(export_->name);
         internal_name = memory->name;
         if (kind != WriteExportsKind::Initializers) {
           WriteMemory(Deref(mangled_name));
@@ -1267,7 +1262,6 @@ void CWriter::WriteExports(WriteExportsKind kind) {
 void CWriter::WriteInit() {
   Write(Newline(), "void WASM_RT_ADD_PREFIX(init)(void) ", OpenBrace());
   Write("init_func_types();", Newline());
-  Write("init_globals();", Newline());
   Write("init_memory();", Newline());
   Write("init_table();", Newline());
   //Write("init_exports();", Newline());
