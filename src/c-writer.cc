@@ -21,8 +21,6 @@
 #include <map>
 #include <set>
 
-#include <iostream>
-
 #include "src/cast.h"
 #include "src/common.h"
 #include "src/ir.h"
@@ -1140,6 +1138,13 @@ void CWriter::WriteDataInitializers() {
           memory->page_limits.initial, ", ", max, ");", Newline());
   }
   data_segment_index = 0;
+
+  Write("wasm_rt_memory_t * mem;\n"
+      "\n"
+  "asm (\"mov %%r15, %0\\n\\t\"\n"
+      "\t: \"=r\" (mem));\n"
+      "\n");
+
   for (const DataSegment* data_segment : module_->data_segments) {
     Write("memcpy(&(", ExternalRef(memory->name), ".data[");
     WriteInitExpr(data_segment->offset);
@@ -2092,8 +2097,8 @@ void CWriter::Write(const LoadExpr& expr) {
   Memory* memory = module_->memories[0];
 
   Type result_type = expr.opcode.GetResultType();
-  Write(StackVar(0, result_type), " = ", func, "(", ExternalPtr(memory->name),
-        ", (u64)(", StackVar(0));
+  Write(StackVar(0, result_type), " = ", func, "((u64)(",
+      StackVar(0));
   if (expr.offset != 0)
     Write(" + ", expr.offset);
   Write("));", Newline());
@@ -2121,7 +2126,7 @@ void CWriter::Write(const StoreExpr& expr) {
   assert(module_->memories.size() == 1);
   Memory* memory = module_->memories[0];
 
-  Write(func, "(", ExternalPtr(memory->name), ", (u64)(", StackVar(1));
+  Write(func, "((u64)(", StackVar(1));
   if (expr.offset != 0)
     Write(" + ", expr.offset);
   Write("), ", StackVar(0), ");", Newline());
