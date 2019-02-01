@@ -1146,7 +1146,7 @@ void CWriter::WriteDataInitializers() {
       "\n");
 
   for (const DataSegment* data_segment : module_->data_segments) {
-    Write("memcpy(&(", ExternalRef(memory->name), ".data[");
+    Write("memcpy(&(mem->data[");
     WriteInitExpr(data_segment->offset);
     Write("]), data_segment_data_", data_segment_index, ", ",
           data_segment->data.size(), ");", Newline());
